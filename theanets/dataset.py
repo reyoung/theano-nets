@@ -23,6 +23,10 @@
 import climate
 import collections
 import numpy.random as rng
+from .normalizers import factory as normalizer_factory
+import csv
+import yaml
+
 
 logging = climate.get_logger(__name__)
 
@@ -87,7 +91,7 @@ class SequenceDataset(object):
                 self.number_batches = cardinality
 
         logging.info('data %s: %s mini-batches of %s',
-            self.label, cardinality, ', '.join(str(x.shape) for x in batch))
+                     self.label, cardinality, ', '.join(str(x.shape) for x in batch))
 
     def __iter__(self):
         return self.iterate(True)
@@ -118,3 +122,46 @@ class SequenceDataset(object):
         if self.batch >= len(self.batches):
             self.shuffle()
             self.batch = 0
+
+
+def __load_normalizers(obj):
+    base_normalizer = obj.get('base_normalizer', {
+        'method': 'void'
+    })
+
+    # Try Load Data
+    filename = obj['file']
+    normalizers = None
+    normalizers_config = obj.get('normalizers', {})
+
+    with open(filename, 'r') as f:
+        reader = csv.reader(f)
+        need_scan = None
+        for line in reader:
+            if normalizers is None:
+                normalizers = [normalizer_factory(normalizers_config.get(int(i), base_normalizer)) for i in
+                               range(len(line))]
+            if need_scan is None:
+                need_scan = reduce(lambda a, b: a and b, [n.need_scan() for n in normalizers])
+                if not need_scan:
+                    break
+            # Scan
+            for i, n in enumerate(normalizers):
+                n.scan(i, line)
+    return normalizers
+
+
+class CSVDataset(object):
+    def __init__(self, obj, norms):
+        pass
+
+def load_dataset(exp, config_file):
+    if config_file is not None:
+        if isinstance(config_file, str):
+            with open(config_file, 'r') as f:
+                obj = yaml.load(f)
+                normalizers = __load_normalizers(obj)
+                label = obj.get('label', config_file)
+                tp = obj.get('type')
+                if tp == 'csv':
+                    ds = CSVDataset(obj, normalizers)

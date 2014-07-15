@@ -24,6 +24,7 @@ import climate
 import theano.tensor as TT
 
 from .dataset import SequenceDataset as Dataset
+from .dataset import load_dataset
 from . import feedforward
 from . import trainer
 
@@ -76,6 +77,7 @@ class Experiment(object):
         self.datasets = {}
 
         self.args, self.kwargs = parse_args(**overrides)
+        load_dataset(self, self.kwargs.get('train'))
 
         kw = {}
         kw.update(self.kwargs)

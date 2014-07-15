@@ -102,3 +102,6 @@ g.add_argument('--preconditioner', action='store_true',
 g = climate.add_arg_group('Recurrent Nets')
 g.add_argument('--pool-error-start', type=int, default=3, metavar='T',
                help='compute network error starting at time T')
+
+g = climate.add_arg_group('Dataset')
+g.add_argument('--train', type=str, help='train config file name')

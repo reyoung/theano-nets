@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-
 import matplotlib.pyplot as plt
+
 import theanets
 
 from utils import load_mnist, plot_layers, plot_images

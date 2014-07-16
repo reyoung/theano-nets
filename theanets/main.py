@@ -77,7 +77,8 @@ class Experiment(object):
         self.datasets = {}
 
         self.args, self.kwargs = parse_args(**overrides)
-        load_dataset(self, self.kwargs.get('train'))
+        load_dataset('train', self, self.kwargs.get('train'))
+        load_dataset('valid', self, self.kwargs.get('valid'))
 
         kw = {}
         kw.update(self.kwargs)
@@ -197,6 +198,10 @@ class Experiment(object):
                 self.add_dataset('cg', train)
         if valid is not None and 'valid' not in self.datasets:
             self.add_dataset('valid', valid)
+
+        if 'train' in self.datasets and 'cg' not in self.datasets:
+            # Make CG and Train Same Database
+            self.datasets['cg'] = self.datasets['train']
         for trainer in self.trainers:
             for _ in trainer.train(train_set=self.datasets['train'],
                                    valid_set=self.datasets['valid'],

@@ -25,13 +25,28 @@ import collections
 import numpy.random as rng
 from .normalizers import factory as normalizer_factory
 import csv
+import abc
+import numpy as np
 import yaml
 
 
 logging = climate.get_logger(__name__)
 
 
-class SequenceDataset(object):
+class IDataset(object):
+    def __init__(self):
+        pass
+
+    @abc.abstractmethod
+    def __iter__(self):
+        """
+        The main method for dataset object. Return a 2D list-like object. First is input data matrix, second is ideal
+        labels or ideal outputs.
+        """
+        pass
+
+
+class SequenceDataset(IDataset):
     '''This class handles batching and shuffling a dataset.
 
     It's mostly copied from the dataset class from hf.py, except that the
@@ -65,6 +80,7 @@ class SequenceDataset(object):
         label: A string that is used to describe this dataset. Usually something
           like 'test' or 'train'.
         '''
+        super(SequenceDataset, self).__init__()
         self.label = kwargs.get('label', 'dataset')
         self.number_batches = kwargs.get('batches')
         self.batch = 0
@@ -89,7 +105,6 @@ class SequenceDataset(object):
             batch = self.batches[0]
             if not self.number_batches:
                 self.number_batches = cardinality
-
         logging.info('data %s: %s mini-batches of %s',
                      self.label, cardinality, ', '.join(str(x.shape) for x in batch))
 
@@ -151,17 +166,80 @@ def __load_normalizers(obj):
     return normalizers
 
 
-class CSVDataset(object):
-    def __init__(self, obj, norms):
-        pass
+class CSVDataset(IDataset):
+    def __iter__(self):
+        if self.inner_dataset is None:
+            pass
+        else:
+            return self.inner_dataset.__iter__()
 
-def load_dataset(exp, config_file):
+    def __init__(self, label, exp, obj, norms):
+        super(CSVDataset, self).__init__()
+        self.batch_size = exp.args.batch_size
+        load_in_mem = obj.get('loadIntoMem', False)
+        self.inner_dataset  = None
+        if load_in_mem:
+            # Load Dataset Into Memory & Normalize
+            self.inner_dataset = CSVDataset.__load_csv_into_mem(label, exp, obj, norms)
+        else:
+            pass
+
+
+    @staticmethod
+    def __load_csv_into_mem(label, exp, obj, norms):
+        """
+            Load CSV File --> Normalize --> SequenceDataset
+        """
+        filename = obj.get('file')
+        # def csv_loader
+        label_pos = obj.get('label', 'first')
+        if label_pos == 'first':
+            label_first = True
+        else:
+            label_first = False
+
+        labels = []
+
+        def get_element_from_csv():
+            with open(filename, 'r') as f:
+                reader = csv.reader(f)
+                d = None
+                for line in reader:
+                    if d is None:
+                        d = len(line)
+                    if label_first:
+                        labels.append(int(line[0]))
+                        line = line[1:]
+                    else:
+                        labels.append(int(line[d - 1]))
+                        line = line[:dimension - 1]
+                    for i, ele in enumerate(line):
+                        n = norms[i]
+                        yield np.float32(n.apply(float(ele)))
+                CSVDataset.__load_csv_into_mem.dimension = d - 1
+
+        input_data = np.fromiter(get_element_from_csv(), dtype=np.float32)
+        dimension = CSVDataset.__load_csv_into_mem.dimension
+        input_data = input_data.reshape((-1, dimension))
+        print input_data[0]
+        labels = np.asarray(labels, 'int32')
+        kwargs = {}
+        if 'batches' not in kwargs:
+            b = getattr(exp.args, '%s_batches' % label, None)
+            kwargs['batches'] = b
+        if 'size' not in kwargs:
+            kwargs['size'] = exp.args.batch_size
+        kwargs['label'] = label
+        return SequenceDataset(*(input_data, labels), **kwargs)
+
+
+def load_dataset(label, exp, config_file):
     if config_file is not None:
         if isinstance(config_file, str):
             with open(config_file, 'r') as f:
                 obj = yaml.load(f)
                 normalizers = __load_normalizers(obj)
-                label = obj.get('label', config_file)
                 tp = obj.get('type')
                 if tp == 'csv':
-                    ds = CSVDataset(obj, normalizers)
+                    ds = CSVDataset(label, exp, obj, normalizers)
+                    exp.datasets[label] = ds

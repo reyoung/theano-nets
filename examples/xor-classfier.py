@@ -2,6 +2,12 @@
 # -*- coding: utf-8 -*-
 
 '''Example using the theanets package for learning the XOR relation.'''
+import sys
+
+for p in sys.path:
+    if 'egg' in p and 'theanets' in p:
+        sys.path.remove(p)
+reload(sys)
 
 import climate
 import logging

@@ -104,4 +104,5 @@ g.add_argument('--pool-error-start', type=int, default=3, metavar='T',
                help='compute network error starting at time T')
 
 g = climate.add_arg_group('Dataset')
-g.add_argument('--train', type=str, help='train config file name')
+g.add_argument('--train', type=str, help='train dataset config file name')
+g.add_argument('--valid', type=str, help='valid dataset config file name')

@@ -22,7 +22,14 @@ try:
         pass
 except IOError:
     urllib.urlretrieve('http://www.pjreddie.com/media/files/mnist_train.csv', 'mnist_train.csv',
-                       lambda a, b, c: print_process(a, b, c, 'Download Mnist CSV '))
+                       lambda a, b, c: print_process(a, b, c, 'Download Mnist Train CSV '))
+
+try:
+    with open('mnist_test.csv', 'r') as f:
+        pass
+except IOError:
+    urllib.urlretrieve('http://www.pjreddie.com/media/files/mnist_test.csv', 'mnist_test.csv',
+                       lambda a, b, c: print_process(a, b, c, 'Download Mnist Validation CSV'))
 
 import matplotlib.pyplot as plt
 import theanets
@@ -36,7 +43,8 @@ e = theanets.Experiment(
     theanets.Classifier,
     layers=(784, N * N, 10),
     train_batches=100,
-    train='train.conf'
+    train='train.conf',
+    valid='valid.conf'
 )
 e.run()
 

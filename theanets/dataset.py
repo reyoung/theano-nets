@@ -24,6 +24,7 @@ import climate
 import collections
 import numpy.random as rng
 from .normalizers import factory as normalizer_factory
+from .normalizers import VoidNormalizer
 import csv
 import abc
 import numpy as np
@@ -36,6 +37,7 @@ except ImportError:
 
 import linecache
 import random
+import multiprocessing
 
 
 logging = climate.get_logger(__name__)
@@ -171,6 +173,10 @@ def __load_normalizers(obj):
             # Scan
             for i, n in enumerate(normalizers):
                 n.scan(i, line)
+
+    if reduce(lambda a, b: a and b, map(lambda x: isinstance(x, VoidNormalizer), normalizers)):
+        normalizers = None
+
     return normalizers
 
 
@@ -224,8 +230,10 @@ class CSVDataset(IDataset):
 
     def __init__(self, label, exp, obj, norms):
         super(CSVDataset, self).__init__()
+
         self.batch_size = exp.args.batch_size
         load_in_mem = obj.get('loadIntoMem', False)
+
         self.inner_dataset = None
         if load_in_mem:
             # Load Dataset Into Memory & Normalize
@@ -247,7 +255,6 @@ class CSVDataset(IDataset):
 
     @staticmethod
     def __get_element_from_file__(reader, label_first, norms, callback):
-        # reader = csv.reader(f)
         d = None
         labels = []
         __gen__ = (x for x in reader if x.__len__() != 0)
@@ -260,9 +267,12 @@ class CSVDataset(IDataset):
             else:
                 labels.append(line[-1])
                 line = line[:-1]
-            for i, ele in enumerate(line):
-                n = norms[i]
-                yield np.float32(n.apply(float(ele)))
+            if norms is not None:
+                for v in map(lambda x: np.float32(x[0].apply(float(x[1]))), zip(norms, line)):
+                    yield v
+            else:
+                for v in line:
+                    yield np.float32(v)
         callback(d, labels)
 
 

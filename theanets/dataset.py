@@ -29,6 +29,14 @@ import abc
 import numpy as np
 import yaml
 
+try:
+    import cStringIO as StringIO
+except ImportError:
+    import StringIO
+
+import linecache
+import random
+
 
 logging = climate.get_logger(__name__)
 
@@ -169,20 +177,93 @@ def __load_normalizers(obj):
 class CSVDataset(IDataset):
     def __iter__(self):
         if self.inner_dataset is None:
-            pass
+            return self.__iter_impl__()
         else:
             return self.inner_dataset.__iter__()
+
+    def __iter_impl__(self):
+        if self.batches is None:
+            # From First To Last.
+            with open(self.filename, 'r') as f:
+                io = StringIO.StringIO()
+                for i, line in enumerate(f):
+                    if (i + 1) % self.batch_size == 0:
+                        io.flush()
+                        yield self.__gen_data_from_lines__(io)
+                        io.close()
+                        io = StringIO.StringIO()
+                    else:
+                        print >> io, line
+                io.close()
+        else:
+            for _ in range(self.batches):
+                io = StringIO.StringIO()
+                for __ in range(self.batch_size):
+                    print >> io, linecache.getline(self.filename, random.randrange(0, self.total_line_count))
+                yield self.__gen_data_from_lines__(io)
+
+    def __gen_data_from_lines__(self, io):
+        labels = []
+        dim = [-1]
+
+        def callback(d, lbl):
+            dim.append(d - 1)
+            for l in lbl:
+                labels.append(l)
+
+        def gen():
+            io.seek(0)
+            reader = csv.reader(io)
+            return CSVDataset.__get_element_from_file__(reader, self.label_first, self.norms, callback)
+
+        input_data = np.fromiter(gen(), dtype=np.float32)
+        labels = np.asarray(labels, "int32")
+        # print dim
+        input_data = input_data.reshape(dim)
+        return input_data, labels
 
     def __init__(self, label, exp, obj, norms):
         super(CSVDataset, self).__init__()
         self.batch_size = exp.args.batch_size
         load_in_mem = obj.get('loadIntoMem', False)
-        self.inner_dataset  = None
+        self.inner_dataset = None
         if load_in_mem:
             # Load Dataset Into Memory & Normalize
             self.inner_dataset = CSVDataset.__load_csv_into_mem(label, exp, obj, norms)
         else:
-            pass
+            label_pos = obj.get('label', 'first')
+            if label_pos == 'first':
+                self.label_first = True
+            else:
+                self.label_first = False
+            self.batches = getattr(exp.args, '%s_batches' % label, None)
+            self.batch_size = exp.args.batch_size
+            # print self.batch_size, self.batches
+            self.filename = obj.get('file')
+            with open(self.filename, 'r') as f:
+                self.total_line_count = sum([1 for l in f])
+            self.norms = norms
+
+
+    @staticmethod
+    def __get_element_from_file__(reader, label_first, norms, callback):
+        # reader = csv.reader(f)
+        d = None
+        labels = []
+        __gen__ = (x for x in reader if x.__len__() != 0)
+        for line in __gen__:
+            if d is None:
+                d = len(line)
+            if label_first:
+                labels.append(line[0])
+                line = line[1:]
+            else:
+                labels.append(line[-1])
+                line = line[:-1]
+            for i, ele in enumerate(line):
+                n = norms[i]
+                yield np.float32(n.apply(float(ele)))
+        callback(d, labels)
 
 
     @staticmethod
@@ -201,27 +282,19 @@ class CSVDataset(IDataset):
         labels = []
 
         def get_element_from_csv():
+            def callback(dim, lbl):
+                CSVDataset.__load_csv_into_mem.dimension = dim - 1
+                for l in lbl:
+                    labels.append(l)
+
             with open(filename, 'r') as f:
-                reader = csv.reader(f)
-                d = None
-                for line in reader:
-                    if d is None:
-                        d = len(line)
-                    if label_first:
-                        labels.append(int(line[0]))
-                        line = line[1:]
-                    else:
-                        labels.append(int(line[d - 1]))
-                        line = line[:dimension - 1]
-                    for i, ele in enumerate(line):
-                        n = norms[i]
-                        yield np.float32(n.apply(float(ele)))
-                CSVDataset.__load_csv_into_mem.dimension = d - 1
+                for i in CSVDataset.__get_element_from_file__(csv.reader(f), label_first, norms, callback):
+                    yield i
 
         input_data = np.fromiter(get_element_from_csv(), dtype=np.float32)
         dimension = CSVDataset.__load_csv_into_mem.dimension
         input_data = input_data.reshape((-1, dimension))
-        print input_data[0]
+        # print input_data[0]
         labels = np.asarray(labels, 'int32')
         kwargs = {}
         if 'batches' not in kwargs:

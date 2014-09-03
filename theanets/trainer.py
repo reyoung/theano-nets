@@ -40,7 +40,7 @@ def default_mapper(f, dataset, *args, **kwargs):
 
 
 def ipcluster_mapper(client):
-    '''Get a mapper from an IPython.parallel cluster client.'''
+    '''Get a mapper from an IPython.parallel_create_layer cluster client.'''
     view = client.load_balanced_view()
     def mapper(f, dataset, *args, **kwargs):
         def ff(x):
@@ -548,7 +548,7 @@ class Layerwise(Trainer):
         nout = len(biases[-1].get_value(borrow=True))
         nhids = [len(b.get_value(borrow=True)) for b in biases[:-1]]
         for i in range(1, len(nhids)):
-            W, b, _ = self.network._create_layer(nhids[i-1], nout, 'lwout-%d' % i)
+            W, b, _ = self.network.create_layer(nhids[i-1], nout, 'lwout-%d' % i)
             self.network.y = TT.dot(hiddens[i-1], W) + b
             self.network.hiddens = hiddens[:i]
             self.network.weights = weights[:i] + [W]
